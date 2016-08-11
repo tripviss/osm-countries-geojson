@@ -1,0 +1,40 @@
+{
+  "name": "osm-countries-geojson",
+  "version": "1.0.0",
+  "description": "Country boundaries extracted from OpenStreetMap in GeoJSON format",
+  "keywords": [
+    "ADM0",
+    "boundaries",
+    "boundary",
+    "countries",
+    "country",
+    "GeoJSON",
+    "ISO3166",
+    "ISO3166-1",
+    "OpenStreetMap",
+    "OSM",
+    "polygon",
+    "polygons"
+  ],
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tripviss/osm-countries-geojson"
+  },
+  "dependencies": {
+  },
+  "devDependencies": {
+    "async": "^2.0.1",
+    "combined-stream2": "^1.1.2",
+    "deferred-stream": "^0.2.0",
+    "event-stream": "^3.3.4",
+    "hyperquest": "^2.0.0",
+    "JSONStream": "^1.1.4",
+    "limiter": "^1.1.0",
+    "lodash": "^4.14.1",
+    "qs": "^6.2.1",
+    "readable-stream": "^2.1.4",
+    "string-to-stream": "^1.1.0",
+    "through2": "^2.0.1"
+  }
+}

@@ -1,0 +1,113 @@
+#!/usr/bin/env node
+
+"use strict";
+
+var _ = require('lodash');
+var async = require('async');
+var CombinedStream = require('combined-stream2');
+var deferred = require('deferred-stream');
+var es = require('event-stream');
+var fs = require('fs');
+var hyperquest = require('hyperquest');
+var JSONStream = require('JSONStream');
+var path = require('path');
+var qs = require('qs');
+var RateLimiter = require('limiter').RateLimiter;
+var Readable = require('readable-stream');
+var str = require('string-to-stream');
+var through2 = require('through2');
+
+var isoToOsm = require('../config/iso3166-1-alpha2_to_osm.json');
+var osmLicense = fs.readFileSync(path.join(__dirname, '..', 'config/osm_license'), { encoding: 'utf8' });
+
+var nominatimRateLimiter = new RateLimiter(1, 1000);
+var reverseGeocodingQueue = async.queue(function (osmAttributes, cb) {
+  var queueCb = cb;
+
+  nominatimRateLimiter.removeTokens(1, function (err, remainingRequests) {
+    var resultStream = doReverseGeocoding(osmAttributes)
+      .pipe(through2.obj(function (result, enc, cb) {
+        this.push(result);
+        cb();
+        queueCb(null, resultStream);
+      }));
+  });
+}, 1);
+
+var combinedStream = CombinedStream.create();
+
+combinedStream.append(str('{\n'));
+combinedStream.append(str('  "license":"' + osmLicense.trim() + '",\n'));
+combinedStream.append(str('  "type":"FeatureCollection",\n'));
+combinedStream.append(str('  "features":'));
+combinedStream.append(features()
+  .pipe(JSONStream.stringify('[\n    ', ',\n    ', '\n  ]\n'))
+);
+combinedStream.append(str('}'));
+combinedStream.pipe(fs.createWriteStream(path.join(__dirname, '..', 'countries.geojson')));
+
+function features() {
+  return new Readable({ objectMode: true })
+    .wrap(es.readArray(_.toPairs(isoToOsm)))
+    .pipe(through2.obj(function (isoOsmPair, enc, cb) {
+      var featuresStream = this;
+      var featuresCb = cb;
+      var countryCode = isoOsmPair[0];
+      var osmAttributes = isoOsmPair[1];
+
+      if (osmAttributes === null) {
+        console.log((new Date()).toTimeString(), countryCode, null);
+        cb();
+        return;
+      }
+
+      console.log((new Date()).toTimeString(), countryCode, osmAttributes['osm_type'] + '(' + osmAttributes['osm_id'] + ')');
+      geometry(osmAttributes)
+        .pipe(through2.obj(function (geometry, enc, cb) {
+          this.push(geometry);
+          featuresStream.push({
+            'type': 'Feature',
+            'properties': {
+              'osm_type': osmAttributes['osm_type'],
+              'osm_id': osmAttributes['osm_id'],
+              'ISO3166-1:alpha2': countryCode
+            },
+            'geometry': geometry
+          });
+          cb();
+          featuresCb();
+        }));
+    }));
+}
+
+function geometry(osmAttributes) {
+  return reverseGeocodingResult(osmAttributes)
+    .pipe(through2.obj(function (result, enc, cb) {
+      this.push(result['geojson']);
+      cb();
+    }));
+}
+
+function reverseGeocodingResult(osmAttributes) {
+  return deferred({ objectMode: true }, function (selfStream) {
+    reverseGeocodingQueue.push(osmAttributes, function (err, resultStream) {
+      resultStream
+        .pipe(selfStream);
+    });
+  });
+}
+
+function doReverseGeocoding(osmAttributes) {
+  return hyperquest('http://nominatim.openstreetmap.org/reverse?' + qs.stringify({
+    'accept-language': 'en,*;q=0.5',
+    'format': 'json',
+    'osm_id': osmAttributes['osm_id'],
+    'osm_type': osmAttributes['osm_type'].charAt(0).toUpperCase(),
+    'polygon_geojson': 1
+  }), {
+    headers: {
+      'Referer': 'https://github.com/tripviss/osm-countries-geojson'
+    }
+  })
+    .pipe(JSONStream.parse());
+}
