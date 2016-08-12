@@ -43,7 +43,7 @@ combinedStream.append(str('  "features":'));
 combinedStream.append(features()
   .pipe(JSONStream.stringify('[\n    ', ',\n    ', '\n  ]\n'))
 );
-combinedStream.append(str('}'));
+combinedStream.append(str('}\n'));
 combinedStream.pipe(fs.createWriteStream(path.join(__dirname, '..', 'countries.geojson')));
 
 function features() {
@@ -72,7 +72,7 @@ function features() {
               'osm_id': osmAttributes['osm_id'],
               'ISO3166-1:alpha2': countryCode
             },
-            'geometry': geometry
+            'geometry': geometry || null
           });
           cb();
           featuresCb();
